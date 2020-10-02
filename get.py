@@ -32,17 +32,17 @@ def get_fac_id(name):
 
 def filter(groups, id):
     for group in groups:
-        if group["facultyId"] == fic_id:
+        if group["facultyId"] == id:
             yield group
 
 
-def get_groups(fic_id):
+def get_groups(fac_id):
     '''получить id групп'''
-    fic_groups = []
+    fac_groups = []
     groups = get_info("groups")
-    for fic_group in filter(groups, fic_id):
-        fic_groups.append(fic_group)
-    return fic_groups
+    for fic_group in filter(groups, fac_id):
+        fac_groups.append(fic_group)
+    return fac_groups
 
 
 # 2 группы, которых не было
@@ -106,7 +106,7 @@ if __name__ == "__main__":
         'mysql+pymysql://root:password@localhost/unidata', echo=True)
     create_table(engine.connect(), name='studentsdata')
 
-    
+
 
 
 # Расписание индивидуальных групп
