@@ -5,8 +5,15 @@ import pymysql.cursors
 import sqlalchemy
 from sqlalchemy import MetaData, Integer, String, DateTime, Column, Table
 import pandas as pd
+import os
 
 apiurl = "https://journal.bsuir.by/api/v1/"
+tablename = 'studentsdata'
+mysqluser = 'root'
+password = 'password'
+ip = 'localhost'
+database = 'unidata'
+faculty = 'ФИК'
 
 
 def get_info(apitype):
@@ -58,7 +65,7 @@ def get_data(groups):
         group_id = group["id"]
         data = get_info(f"studentGroup/schedule?id={group_id}")
         with open(f'data_{group_id}.json', 'w') as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
+            json.dump(data, f, ensure_ascii=False)
 
 
 def create_table(engine, name):
@@ -95,18 +102,54 @@ def create_table(connection, name):
         metadata.create_all(connection)
 
 
+def get_data2(groups):
+    '''save data'''
+    for group in groups:
+        group_id = group["id"]
+        data = get_info(f"studentGroup/schedule?id={group_id}")
+
+        print(type(data))
+        print(data)
+
+        data = pd.json_normalize(data)
+        data.get('studentGroup')
+        print(data)
+        break
+
+
 if __name__ == "__main__":
-    # # get data from API
-    # fic_id = get_fac_id("ФИК")
-    # groups = get_groups(fic_id)
+    # get data from API
+    fac_id = get_fac_id(faculty)
+    groups = get_groups(fac_id)
     # get_data(groups)
 
-    # work with mysql. Database -- unidata.
     engine = sqlalchemy.create_engine(
-        'mysql+pymysql://root:password@localhost/unidata', echo=True)
-    create_table(engine.connect(), name='studentsdata')
+        f'mysql+pymysql://{mysqluser}:{password}@{ip}/{database}', echo=True)
+    create_table(engine.connect(), name=tablename)
 
+    # data_list = []
+    # for file in os.listdir('./data'):
+    # #If file is a json, construct it's full path and open it, append all json data to list
+    #     if 'data_22232.json' in file:
+    #         with open (f'data/{file}'):
+    #         # json_path = os.path.join(os.getcwd(), 'data', file)
+    #         # json_data = pd.read_json(json_path, orient='records')
+    #             data = json.load(file)
+    #             print(pd.json_normalize(data))
 
+    # print(data_list)
+    get_data2(groups)
+
+    
+    # for file in os.listdir('./data'):
+    #     if 'json' in file:
+
+    #     os.getcwd
+    #     with open(f'data/{file}', 'r'):
+    #         data = json.load(f'data/{file}')
+    #         print(json.dumps(data, indent=2))
+    #         # data.head()
+    #     break
 
 
 # Расписание индивидуальных групп
