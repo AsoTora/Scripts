@@ -3,9 +3,10 @@ from requests.exceptions import HTTPError
 import json
 import pymysql.cursors
 import sqlalchemy
-from sqlalchemy import MetaData, Integer, String, DateTime, Column, Table
+from sqlalchemy import MetaData, Integer, String, DateTime, Column, Table, text
 import pandas as pd
 import os
+metadata = sqlalchemy.MetaData()
 
 apiurl = "https://journal.bsuir.by/api/v1/"
 tablename = 'studentsdata'
@@ -68,52 +69,38 @@ def get_data(groups):
             json.dump(data, f, ensure_ascii=False)
 
 
-def create_table(engine, name):
-    '''create mysql table'''
-    metadata = sqlalchemy.MetaData()
-    name = Table(
-        name, MetaData,
-        Column('id', Integer, primary_key=True),
-        Column('name', String),
-        Column('dayweel', String),
-        Column('numberweek', Integer),
-        Column('lesson', String),
-        Column('typelesson', String),
-        Column('class', String),
-        Column('time', DateTime)
-    )
-    metadata.create_all(engine)
-
-
-def create_table(connection, name):
+def create_table(connection, table):
     with connection.begin():
-        metadata = sqlalchemy.MetaData()
-        name = Table(
-            name, metadata,
-            Column('id', Integer, primary_key=True),
-            Column('name', String(length=15)),
-            Column('weekday', String(length=15)),
-            Column('numberweek', Integer),
-            Column('subject', String(length=30)),
-            Column('typelesson', String(length=10)),
-            Column('class', String(length=15)),
-            Column('time', DateTime)
-        )
         metadata.create_all(connection)
 
 
-def get_data2(groups):
+def insert_sql(connection, table, gname, weekday, numberweek, subject, typelesson, auditory, timestart, timeend):
+    with connection.begin():
+        connection.execute(table.insert(), {
+                           'name': gname, 'weekday': weekday, 'numberweek': numberweek, 'subject': subject,
+                           'typelesson': typelesson, 'auditory': auditory, 'timestart': timestart, 'timeend': timeend})
+    return None
+
+
+def get_and_insert_data(groups, connection, table):
     '''save data'''
+    tosql = {}
+    '''
+        [
+            {name: ***},
+        
+            {Weekday: [{weeknumber (1-4): [{auditory: ***}, {subject: ***}, {lessonType: ***}, {timestart: **}, {timeend: **}],
+             [], []}, {}, {}, {}] 
+        ]
+    '''
     for group in groups:
         group_id = group["id"]
         data = get_info(f"studentGroup/schedule?id={group_id}")
 
-        print(type(data))
-        print(data)
-
-        data = pd.json_normalize(data)
-        data.get('studentGroup')
-        print(data)
+        tosql['gname'] = data['studentGroup']['name']
+        for day in data['schedules']:
+            tosql['weekday'] = day['weekDay']
+            for 
         break
 
 
@@ -125,62 +112,29 @@ if __name__ == "__main__":
 
     engine = sqlalchemy.create_engine(
         f'mysql+pymysql://{mysqluser}:{password}@{ip}/{database}', echo=True)
-    create_table(engine.connect(), name=tablename)
-
-    # data_list = []
-    # for file in os.listdir('./data'):
-    # #If file is a json, construct it's full path and open it, append all json data to list
-    #     if 'data_22232.json' in file:
-    #         with open (f'data/{file}'):
-    #         # json_path = os.path.join(os.getcwd(), 'data', file)
-    #         # json_data = pd.read_json(json_path, orient='records')
-    #             data = json.load(file)
-    #             print(pd.json_normalize(data))
-
-    # print(data_list)
-    get_data2(groups)
-
     
-    # for file in os.listdir('./data'):
-    #     if 'json' in file:
+    table = Table(
+            tablename, metadata,
+            Column('id', Integer, primary_key=True),
+            Column('name', String(length=15)),
+            Column('weekday', String(length=15)),
+            Column('numberweek', Integer),
+            Column('subject', String(length=30)),
+            Column('typelesson', String(length=10)),
+            Column('auditory', String(length=15)),
+            Column('timestart', String(length=15)),
+            Column('timeend', String(length=15))
+        )
 
-    #     os.getcwd
-    #     with open(f'data/{file}', 'r'):
-    #         data = json.load(f'data/{file}')
-    #         print(json.dumps(data, indent=2))
-    #         # data.head()
-    #     break
+    with engine.connect() as conn:
+        # create_table(conn, table)
+        # # change charset for russian words
+        # conn.execute(text("SET collation_connection = 'utf8_general_ci'"))
+        # conn.execute(text(f"ALTER DATABASE {database} CHARACTER SET utf8 COLLATE utf8_general_ci;"))
+        # conn.execute(text(f"ALTER TABLE {tablename} CONVERT TO CHARACTER SET utf8 COLLATE utf8_general_ci;"))
 
-
-# Расписание индивидуальных групп
-# for gr_id in data.keys():
-#     resp = r.get("https://journal.bsuir.by/api/v1/studentGroup/schedule?id={}".format(gr_id)).json()
-#     print(resp)
-#     break
-
-# # Connect to the database
-# connection = pymysql.connect(host='localhost',
-#                              user='root',
-#                              password='password',
-#                              db='TESTIMPORT',
-#                              charset='utf8mb4',
-#                              cursorclass=pymysql.cursors.DictCursor)
-
-# try:
-#     with connection.cursor() as cursor:
-#         # Create a new record
-#         sql = "INSERT INTO monday ('group_id', 'group_name', 'Aud', 'Subj', 'Teacher') VALUES (%s, %s, %s, %s, %s)"
-#         cursor.execute(sql, ('22862', '863011', "506-3", "ПСИС", "Прищепа С. Л. (Профессор)"))
-
-#     # connection is not autocommit by default. So you must commit to save
-#     # your changes.
-#     connection.commit()
-
-#     # with connection.cursor() as cursor:
-#     #     # Read a single record
-#     #     sql = "SELECT `id`, `password` FROM `users` WHERE `email`=%s"
-#     #     cursor.execute(sql, ('webmaster@python.org',))
-#     #     result = cursor.fetchone()
-#     #     print(result)
-# finally:
-#     connection.close()
+        get_and_insert_data(groups, conn, table)
+        # test insert
+        # insert_sql(connection=conn, table=table, gname='861411',
+        #            weekday='Понедельник', numberweek=1, subject='ПЭ', typelesson='ПЗ', auditory='345-1',
+        #            timestart='14:00', timeend='15:00')
