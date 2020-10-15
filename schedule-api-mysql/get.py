@@ -61,7 +61,7 @@ def get_groups(fac_id):
 # id - 22233: num - 761402
 
 def get_data(groups):
-    '''save data'''
+    '''save data locally'''
     for group in groups:
         group_id = group["id"]
         data = get_info(f"studentGroup/schedule?id={group_id}")
@@ -74,33 +74,44 @@ def create_table(connection, table):
         metadata.create_all(connection)
 
 
-def insert_sql(connection, table, gname, weekday, numberweek, subject, typelesson, auditory, timestart, timeend):
+def insert_sql(connection, table, tosql):
+    '''
+    Data format: {gname, weekday, numberweek, subject, typelesson, auditory, timestart, timeend}
+    '''
     with connection.begin():
-        connection.execute(table.insert(), {
-                           'name': gname, 'weekday': weekday, 'numberweek': numberweek, 'subject': subject,
-                           'typelesson': typelesson, 'auditory': auditory, 'timestart': timestart, 'timeend': timeend})
+        connection.execute(table.insert(), tosql)
     return None
 
 
 def get_and_insert_data(groups, connection, table):
     '''save data'''
     tosql = {}
-    '''
-        [
-            {name: ***},
-        
-            {Weekday: [{weeknumber (1-4): [{auditory: ***}, {subject: ***}, {lessonType: ***}, {timestart: **}, {timeend: **}],
-             [], []}, {}, {}, {}] 
-        ]
-    '''
+
     for group in groups:
         group_id = group["id"]
         data = get_info(f"studentGroup/schedule?id={group_id}")
 
+        # save group name
         tosql['gname'] = data['studentGroup']['name']
+
+        # get data
         for day in data['schedules']:
             tosql['weekday'] = day['weekDay']
-            for 
+            for entry in day['schedule']:
+
+                # TODO check for k > 1
+                for k in entry['auditory']:
+                    tosql['auditory'] = k
+                tosql['typelesson'] = entry['lessonType']
+                tosql['subject'] = entry['subject']
+                tosql['timestart'] = entry['startLessonTime']
+                tosql['timeend'] = entry['endLessonTime']
+
+                # in case > 1
+                for numberweek in entry['weekNumber']:
+                    tosql['numberweek'] = numberweek
+                    # insert each value
+                    insert_sql(connection, table, tosql)
         break
 
 
@@ -112,29 +123,27 @@ if __name__ == "__main__":
 
     engine = sqlalchemy.create_engine(
         f'mysql+pymysql://{mysqluser}:{password}@{ip}/{database}', echo=True)
-    
+
     table = Table(
-            tablename, metadata,
-            Column('id', Integer, primary_key=True),
-            Column('name', String(length=15)),
-            Column('weekday', String(length=15)),
-            Column('numberweek', Integer),
-            Column('subject', String(length=30)),
-            Column('typelesson', String(length=10)),
-            Column('auditory', String(length=15)),
-            Column('timestart', String(length=15)),
-            Column('timeend', String(length=15))
-        )
+        tablename, metadata,
+        Column('id', Integer, primary_key=True),
+        Column('name', String(length=15)),
+        Column('weekday', String(length=15)),
+        Column('numberweek', Integer),
+        Column('subject', String(length=30)),
+        Column('typelesson', String(length=10)),
+        Column('auditory', String(length=15)),
+        Column('timestart', String(length=15)),
+        Column('timeend', String(length=15))
+    )
 
     with engine.connect() as conn:
-        # create_table(conn, table)
-        # # change charset for russian words
-        # conn.execute(text("SET collation_connection = 'utf8_general_ci'"))
-        # conn.execute(text(f"ALTER DATABASE {database} CHARACTER SET utf8 COLLATE utf8_general_ci;"))
-        # conn.execute(text(f"ALTER TABLE {tablename} CONVERT TO CHARACTER SET utf8 COLLATE utf8_general_ci;"))
+        create_table(conn, table)
+        # change charset for russian words
+        conn.execute(text("SET collation_connection = 'utf8_general_ci'"))
+        conn.execute(
+            text(f"ALTER DATABASE {database} CHARACTER SET utf8 COLLATE utf8_general_ci;"))
+        conn.execute(text(
+            f"ALTER TABLE {tablename} CONVERT TO CHARACTER SET utf8 COLLATE utf8_general_ci;"))
 
         get_and_insert_data(groups, conn, table)
-        # test insert
-        # insert_sql(connection=conn, table=table, gname='861411',
-        #            weekday='Понедельник', numberweek=1, subject='ПЭ', typelesson='ПЗ', auditory='345-1',
-        #            timestart='14:00', timeend='15:00')
