@@ -6,15 +6,11 @@ import sqlalchemy
 from sqlalchemy import MetaData, Integer, String, DateTime, Column, Table, text
 import pandas as pd
 import os
-metadata = sqlalchemy.MetaData()
+from settings import *
 
+metadata = sqlalchemy.MetaData()
 apiurl = "https://journal.bsuir.by/api/v1/"
-tablename = 'studentsdata'
-mysqluser = 'root'
-password = 'password'
-ip = 'localhost'
-database = 'unidata'
-faculty = 'ФИК'
+
 
 
 def get_info(apitype):
@@ -62,11 +58,15 @@ def get_groups(fac_id):
 
 def get_data(groups):
     '''save data locally'''
-    for group in groups:
-        group_id = group["id"]
-        data = get_info(f"studentGroup/schedule?id={group_id}")
-        with open(f'data_{group_id}.json', 'w') as f:
-            json.dump(data, f, ensure_ascii=False)
+    try:
+        os.mkdir(f'{faculty}_data')
+        for group in groups:
+            group_id = group["id"]
+            data = get_info(f"studentGroup/schedule?id={group_id}")
+            with open(f'{faculty}_data/data_{group_id}.json', 'w') as f:
+                json.dump(data, f, ensure_ascii=True, indent=2)
+    except FileExistsError:
+        print("Directory with data already exists")
 
 
 def create_table(connection, table):
@@ -76,7 +76,7 @@ def create_table(connection, table):
 
 def insert_sql(connection, table, tosql):
     '''
-    Data format: {gname, weekday, numberweek, subject, typelesson, auditory, timestart, timeend}
+    Data format: {gname, group_id, weekday, numberweek, subject, typelesson, auditory, timestart, timeend}
     '''
     with connection.begin():
         connection.execute(table.insert(), tosql)
@@ -86,40 +86,55 @@ def insert_sql(connection, table, tosql):
 def get_and_insert_data(groups, connection, table):
     '''save data'''
     tosql = {}
+    id = 1
 
-    for group in groups:
-        group_id = group["id"]
-        data = get_info(f"studentGroup/schedule?id={group_id}")
+    # for group in groups:
+    #     # group_id = group["id"]
+    #     # data = get_info(f"studentGroup/schedule?id={group_id}")
 
-        # save group name
-        tosql['gname'] = int(data['studentGroup']['name'])
+    for file in os.listdir(f'{faculty}_data/'):
+        with open(f'{faculty}_data/{file}') as f:
+            data = json.load(f)
+            tosql['group_id'] = int(data['studentGroup']['id'])
 
-        # get data
-        for day in data['schedules']:
-            tosql['weekday'] = day['weekDay']
-            for entry in day['schedule']:
+            # save group name
+            try:
+                tosql['gname'] = int(data['studentGroup']['name'])
+            except TypeError:
+                tosql['gname'] = 'NULL'
 
-                # TODO check for k > 1
-                for k in entry['auditory']:
-                    tosql['auditory'] = k
-                tosql['typelesson'] = entry['lessonType']
-                tosql['subject'] = entry['subject']
-                tosql['timestart'] = entry['startLessonTime']
-                tosql['timeend'] = entry['endLessonTime']
+            # get data
+            try:
+                for day in data['schedules']:
+                    tosql['weekday'] = day['weekDay']
+                    for entry in day['schedule']:
 
-                # in case > 1
-                for numberweek in entry['weekNumber']:
-                    tosql['numberweek'] = numberweek
-                    # insert each value
-                    insert_sql(connection, table, tosql)
-        break
+                        # TODO check for k > 1
+                        for k in entry['auditory']:
+                            tosql['auditory'] = k
+                        tosql['typelesson'] = entry['lessonType']
+                        tosql['subject'] = entry['subject']
+                        tosql['timestart'] = entry['startLessonTime']
+                        tosql['timeend'] = entry['endLessonTime']
+
+                        # in case > 1
+                        for numberweek in entry['weekNumber']:
+                            tosql['numberweek'] = numberweek
+                            tosql['id'] = id
+                            # insert each value
+                            insert_sql(connection, table, tosql)
+                            id += 1
+            except TypeError:
+                continue
 
 
 if __name__ == "__main__":
     # get data from API
     fac_id = get_fac_id(faculty)
     groups = get_groups(fac_id)
-    # get_data(groups)
+
+    # save data locally to avoid api disconnection while parsing
+    get_data(groups)
 
     engine = sqlalchemy.create_engine(
         f'mysql+pymysql://{mysqluser}:{password}@{ip}/{database}', echo=True)
@@ -127,7 +142,8 @@ if __name__ == "__main__":
     table = Table(
         tablename, metadata,
         Column('id', Integer, primary_key=True),
-        Column('gname', Integer),
+        Column('group_id', Integer),
+        Column('gname', String(length=15)),
         Column('weekday', String(length=15)),
         Column('numberweek', Integer),
         Column('subject', String(length=30)),
