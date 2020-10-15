@@ -92,7 +92,7 @@ def get_and_insert_data(groups, connection, table):
         data = get_info(f"studentGroup/schedule?id={group_id}")
 
         # save group name
-        tosql['gname'] = data['studentGroup']['name']
+        tosql['gname'] = int(data['studentGroup']['name'])
 
         # get data
         for day in data['schedules']:
@@ -127,7 +127,7 @@ if __name__ == "__main__":
     table = Table(
         tablename, metadata,
         Column('id', Integer, primary_key=True),
-        Column('name', String(length=15)),
+        Column('gname', Integer),
         Column('weekday', String(length=15)),
         Column('numberweek', Integer),
         Column('subject', String(length=30)),
